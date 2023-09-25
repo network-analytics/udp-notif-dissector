@@ -1,5 +1,7 @@
 -- Wireshark UDP-Notif dissector
 
+-- SPDX-License-Identifier: GPL-2.0-or-later
+
 -- todo:
 --   handle options
 --   handle segmentation
