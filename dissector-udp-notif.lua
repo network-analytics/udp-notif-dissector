@@ -1,5 +1,8 @@
 -- Wireshark UDP-Notif dissector
 
+-- https://github.com/network-analytics/draft-ietf-netconf-udp-notif
+-- https://datatracker.ietf.org/doc/draft-ietf-netconf-udp-notif/11
+
 -- SPDX-License-Identifier: GPL-2.0-or-later
 
 -- todo:
