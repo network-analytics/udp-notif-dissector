@@ -5,11 +5,8 @@
 
 -- SPDX-License-Identifier: GPL-2.0-or-later
 
--- todo:
---   reassemble segmented packets
-
 local plugin_info = {
-  version = "0.0.2",
+  version = "0.0.2s",
   description = "UDP-Notif dissector",
   author = "Uwe Storbeck",
   repository = "https://github.com/network-analytics/udp-notif-dissector"
@@ -60,6 +57,10 @@ un_prot.fields = { f_ver, f_mts, f_std_mt, f_priv_enc, f_hdr_len, f_msg_len,
                    f_pub_id, f_msg_id, f_opt_type, f_opt_len, f_opt_data,
                    f_seg_num, f_last_seg, f_enc_desc, f_payload }
 
+function un_prot.init()
+  segments = {}  -- global array table to hold the segments
+end
+
 function un_prot.dissector(buf, pkt, tree)
 
   -- make sure we have at least 12 bytes in the buffer
@@ -71,6 +72,9 @@ function un_prot.dissector(buf, pkt, tree)
   local msg_len = buf(2,2):uint()
   local pub_id = buf(4,4):uint()
   local msg_id = buf(8,4):uint()
+  local segmented = false
+  local last_seg = false
+  local message = ByteArray.new()
 
   pkt.cols.protocol = un_prot.name
 
@@ -107,11 +111,26 @@ function un_prot.dissector(buf, pkt, tree)
       print("option length too large for header size (" .. opt_len .. ")")
       opt_len = hdr_len - i
     end
+
     if opt_type == 1 then -- segmentation
+      segmented = true
+      last_seg = bit.band(buf(i+3,1):uint(), 0x01) ~= 0
       local seg_num = bit.rshift(buf(i+2,2):uint(), 1)
-      local last_seg = bit.band(buf(i+3,1):uint(), 0x01) ~= 0
       local seg_str = ""
       if last_seg then seg_str = " (last)" end
+
+      -- save and reassemble segments
+      if segments[pub_id] == nil then segments[pub_id] = {} end
+      if segments[pub_id][msg_id] == nil then segments[pub_id][msg_id] = {} end
+      segments[pub_id][msg_id][seg_num] = buf(hdr_len):bytes()
+      if last_seg then
+        local j = 0
+        while segments[pub_id][msg_id][j] do
+          message = message .. segments[pub_id][msg_id][j]
+          j = j + 1
+        end
+      end
+
       local opttree = subtree:add(un_prot, buf(i,opt_len),
                                   "Option: Segmentation, Segment Number: "
                                   .. seg_num .. seg_str)
@@ -119,12 +138,14 @@ function un_prot.dissector(buf, pkt, tree)
       opttree:add(f_opt_len, buf(i+1,1))
       opttree:add(f_seg_num, buf(i+2,2))
       opttree:add(f_last_seg, buf(i+2,2))
+
     elseif opt_type == 2 then -- private encoding
       local opttree = subtree:add(un_prot, buf(i,opt_len),
                                   "Option: Private Encoding")
       opttree:add(f_opt_type, buf(i,1))
       opttree:add(f_opt_len, buf(i+1,1))
       opttree:add(f_enc_desc, buf(i+2,opt_len-2))
+
     else
       local opttree = subtree:add(un_prot, buf(i,opt_len))
       opttree:add(f_opt_type, buf(i,1))
@@ -141,7 +162,12 @@ function un_prot.dissector(buf, pkt, tree)
     elseif mt == 3 then payload = "cbor"
     end
     local data_dis = Dissector.get(payload)
-    data_dis:call(buf(hdr_len):tvb(), pkt, tree)
+    if segmented then
+      subtree:add(f_payload, buf(i,msg_len-i)):append_text(" (" .. msg_len-i .. " bytes)")
+      if last_seg then data_dis:call(message:tvb(), pkt, tree) end
+    else
+      data_dis:call(buf(hdr_len):tvb(), pkt, tree)
+    end
   else
     subtree:add(f_payload, buf(i,msg_len-i)):append_text(" (" .. msg_len-i .. " bytes)")
   end
