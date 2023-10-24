@@ -8,6 +8,14 @@
 -- todo:
 --   reassemble segmented packets
 
+local plugin_info = {
+  version = "0.0.1",
+  description = "UDP-Notif dissector",
+  author = "Uwe Storbeck",
+  repository = "https://github.com/network-analytics/udp-notif-dissector"
+}
+set_plugin_info(plugin_info)
+
 un_prot = Proto("udpnotif", "UDP-Notif")
 
 local yesno_type = {
