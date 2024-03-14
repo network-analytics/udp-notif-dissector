@@ -9,7 +9,7 @@
 --   reassemble segmented packets
 
 local plugin_info = {
-  version = "0.0.1",
+  version = "0.0.2",
   description = "UDP-Notif dissector",
   author = "Uwe Storbeck",
   repository = "https://github.com/network-analytics/udp-notif-dissector"
@@ -74,6 +74,12 @@ function un_prot.dissector(buf, pkt, tree)
 
   pkt.cols.protocol = un_prot.name
 
+  -- work around broken protocol implementations
+  if hdr_len < 12 then
+    print("header length too small (" .. hdr_len .. "), must be at least 12")
+    hdr_len = 12
+  end
+
   local subtree = tree:add(un_prot, buf(0,hdr_len),
                            "UDP-Notif Protocol, Publisher: " .. pub_id .. ", Msg ID: " .. msg_id)
   subtree:add(f_ver, buf(0,1))
@@ -87,10 +93,6 @@ function un_prot.dissector(buf, pkt, tree)
   subtree:add(f_msg_len, buf(2,2))
   subtree:add(f_pub_id, buf(4,4))
   subtree:add(f_msg_id, buf(8,4))
-  if hdr_len < 12 then
-    print("header length too small (" .. hdr_len .. "), must be at least 12")
-    hdr_len = 12
-  end
 
   -- handle options
   local i = 12
